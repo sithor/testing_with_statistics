@@ -1,0 +1,21 @@
+patient_id,age,sex,treatment,baseline_bp,followup_bp,adverse_event
+1,45,M,Control,145,142,No
+2,52,F,Drug A,138,125,No
+3,38,M,Drug B,156,140,Yes
+4,61,F,Control,142,140,No
+5,47,M,Drug A,151,132,No
+6,55,F,Drug B,148,135,No
+7,42,M,Control,139,138,No
+8,59,F,Drug A,162,145,Yes
+9,33,M,Drug B,144,138,No
+10,48,F,Control,147,145,No
+11,51,M,Drug A,155,130,No
+12,44,F,Drug B,141,136,No
+13,57,M,Control,149,147,No
+14,39,F,Drug A,153,135,No
+15,62,M,Drug B,158,142,Yes
+16,46,F,Control,143,141,No
+17,53,M,Drug A,147,128,No
+18,41,F,Drug B,152,140,No
+19,49,M,Control,146,144,No
+20,56,F,Drug A,160,138,No

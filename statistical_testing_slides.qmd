@@ -1,0 +1,598 @@
+---
+title: "Statistical Testing in Health Sciences"
+subtitle: "A Framework for Avoiding Errors in Analysis"
+author: "Dr Simon Thornley"
+date: "January 6, 2026"
+format:
+  pptx:
+    reference-doc: null
+    slide-level: 2
+editor: visual
+---
+
+## Learning Objectives
+
+By the end of this presentation, you will:
+
+- Understand why statistical testing matters in health research
+- Learn a systematic framework for data analysis
+- Recognize common errors and how to avoid them
+- Apply basic statistical tests in R
+- Interpret results appropriately
+
+## Why Statistical Testing Matters
+
+**Real-world consequences:**
+
+- Wrong conclusions about treatment effectiveness
+- Wasted research funding and time
+- Patient safety implications
+- Reproducibility crisis in science
+
+**Example:** A study claims a new drug works, but errors in analysis led to false positives. Patients receive ineffective treatment.
+
+## The Analysis Framework
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+library(DiagrammeR)
+grViz("
+digraph analysis_flow {
+  node [shape=box, style=filled, fillcolor=lightblue]
+  Import -> Clean -> Explore -> Test -> Interpret
+  
+  Clean -> Import [label='Issues?', style=dashed]
+  Explore -> Clean [label='Problems?', style=dashed]
+  Test -> Explore [label='Assumptions?', style=dashed]
+}
+", width = 800, height = 300)
+```
+
+**Five key steps - each with potential pitfalls!**
+
+# Step 1: Data Import
+
+## Import: Common Errors
+
+**What can go wrong?**
+
+1. Wrong delimiter (comma vs. tab vs. semicolon)
+2. Column names not read correctly
+3. Missing values coded inconsistently (NA, -999, blank)
+4. Date formats not recognized
+5. Special characters cause issues
+
+## Import: Good Practice
+
+```{r}
+#| echo: true
+#| eval: false
+# Load necessary packages
+library(readr)
+library(dplyr)
+
+# Import with explicit specifications
+data <- read_csv(
+  "patient_data.csv",
+  col_types = cols(
+    patient_id = col_character(),
+    age = col_double(),
+    treatment = col_factor(),
+    outcome = col_double()
+  ),
+  na = c("", "NA", "N/A", "-999")
+)
+
+# ALWAYS check your import!
+glimpse(data)
+head(data)
+summary(data)
+```
+
+## Import: Red Flags to Check
+
+```{r}
+#| echo: true
+#| eval: false
+# Check for problems
+problems(data)  # Any parsing issues?
+
+# Verify dimensions
+dim(data)  # Expected rows and columns?
+
+# Check column types
+str(data)  # Are numeric columns actually numeric?
+
+# Look for unexpected values
+unique(data$treatment)  # Any typos?
+```
+
+**Stop and fix issues NOW - don't continue with bad data!**
+
+# Step 2: Data Cleaning
+
+## Cleaning: Common Errors
+
+**Critical mistakes:**
+
+1. Not checking for duplicates
+2. Ignoring missing data patterns
+3. Removing outliers without justification
+4. Not documenting changes
+5. Overwriting original data
+
+## Cleaning: Example Dataset
+
+```{r}
+#| echo: true
+# Create example health study data
+set.seed(123)
+n <- 200
+
+patient_data <- data.frame(
+  id = 1:n,
+  age = round(rnorm(n, 45, 15)),
+  sex = sample(c("M", "F"), n, replace = TRUE),
+  treatment = sample(c("Control", "Drug A", "Drug B"), n, replace = TRUE),
+  baseline_bp = round(rnorm(n, 140, 20)),
+  followup_bp = round(rnorm(n, 130, 20)),
+  adverse_event = sample(c("Yes", "No"), n, replace = TRUE, prob = c(0.15, 0.85))
+)
+
+# Introduce some realistic problems
+patient_data$age[c(5, 23)] <- NA
+patient_data$followup_bp[c(10, 45, 67)] <- NA
+patient_data$id[150] <- 149  # Duplicate
+```
+
+## Cleaning: Systematic Approach
+
+```{r}
+#| echo: true
+library(dplyr)
+
+# 1. Check for duplicates
+duplicates <- patient_data %>% 
+  group_by(id) %>% 
+  filter(n() > 1)
+
+if(nrow(duplicates) > 0) {
+  warning("Duplicates found!")
+  print(duplicates)
+}
+
+# 2. Check missing data
+colSums(is.na(patient_data))
+
+# 3. Check for impossible values
+summary(patient_data$age)  # Negative ages?
+summary(patient_data$baseline_bp)  # BP = 0 or 300?
+```
+
+## Cleaning: Handling Missing Data
+
+```{r}
+#| echo: true
+# Visualize missing patterns
+library(naniar)
+vis_miss(patient_data)
+
+# Decide on strategy:
+# - Complete case analysis (if <5% missing at random)
+# - Imputation (if defensible)
+# - Report as limitation
+
+# Document your decision!
+clean_data <- patient_data %>%
+  filter(!duplicated(id)) %>%  # Remove duplicates
+  filter(!is.na(age) & !is.na(followup_bp))  # Complete cases
+
+cat("Removed", nrow(patient_data) - nrow(clean_data), "rows")
+```
+
+# Step 3: Exploratory Analysis
+
+## Exploration: Why It Matters
+
+**Before statistical testing, you MUST:**
+
+- Understand your data distribution
+- Check assumptions
+- Identify outliers and patterns
+- Choose appropriate tests
+
+**Skipping exploration = guaranteed errors**
+
+## Exploration: Contingency Tables
+
+```{r}
+#| echo: true
+# Cross-tabulation
+table(clean_data$treatment, clean_data$adverse_event)
+
+# Add proportions
+prop.table(table(clean_data$treatment, clean_data$adverse_event), 
+           margin = 1) %>% 
+  round(3)
+
+# More informative summary
+library(janitor)
+clean_data %>%
+  tabyl(treatment, adverse_event) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 1) %>%
+  adorn_ns()
+```
+
+## Exploration: Visualize Before Testing!
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 5
+library(ggplot2)
+
+ggplot(clean_data, aes(x = treatment, y = baseline_bp)) +
+  geom_boxplot(fill = "lightblue") +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  labs(title = "Baseline Blood Pressure by Treatment Group",
+       y = "Systolic BP (mmHg)") +
+  theme_minimal()
+```
+
+## Exploration: Check Distributions
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 4
+library(patchwork)
+
+p1 <- ggplot(clean_data, aes(x = age)) +
+  geom_histogram(bins = 30, fill = "steelblue") +
+  labs(title = "Age Distribution") +
+  theme_minimal()
+
+p2 <- ggplot(clean_data, aes(sample = age)) +
+  stat_qq() + stat_qq_line() +
+  labs(title = "Q-Q Plot: Normality Check") +
+  theme_minimal()
+
+p1 + p2
+```
+
+# Step 4: Statistical Testing
+
+## Testing: Choose the Right Test
+
+**Common mistake: Using the wrong test!**
+
+| Data Type | Groups | Test |
+|-----------|--------|------|
+| Continuous | 2 groups | t-test (or Wilcoxon) |
+| Continuous | 3+ groups | ANOVA (or Kruskal-Wallis) |
+| Categorical | 2+ groups | Chi-square |
+| Continuous outcome + predictors | Multiple | Regression |
+
+**Check assumptions first!**
+
+## Testing: Chi-Square Example
+
+```{r}
+#| echo: true
+# Question: Is adverse event rate different by treatment?
+
+# Create contingency table
+cont_table <- table(clean_data$treatment, clean_data$adverse_event)
+cont_table
+
+# Chi-square test
+chi_result <- chisq.test(cont_table)
+chi_result
+
+# Check expected frequencies (should be >5)
+chi_result$expected
+```
+
+## Testing: Interpreting Chi-Square
+
+```{r}
+#| echo: true
+# Extract key information
+cat("Chi-square statistic:", round(chi_result$statistic, 2), "\n")
+cat("Degrees of freedom:", chi_result$parameter, "\n")
+cat("P-value:", round(chi_result$p.value, 4), "\n")
+
+if(chi_result$p.value < 0.05) {
+  cat("\nConclusion: Significant difference in adverse event rates")
+} else {
+  cat("\nConclusion: No significant difference in adverse event rates")
+}
+```
+
+**Important:** P-value is not effect size! Report both.
+
+## Testing: T-Test Example
+
+```{r}
+#| echo: true
+# Question: Does Drug A reduce BP more than Control?
+
+# Calculate BP change
+clean_data <- clean_data %>%
+  mutate(bp_change = baseline_bp - followup_bp)
+
+# Filter to two groups
+compare_data <- clean_data %>%
+  filter(treatment %in% c("Control", "Drug A"))
+
+# Check normality assumption
+shapiro.test(compare_data$bp_change[compare_data$treatment == "Control"])
+shapiro.test(compare_data$bp_change[compare_data$treatment == "Drug A"])
+```
+
+## Testing: T-Test Results
+
+```{r}
+#| echo: true
+# Perform t-test
+t_result <- t.test(bp_change ~ treatment, data = compare_data)
+t_result
+
+# Calculate effect size (Cohen's d)
+library(effsize)
+cohen.d(bp_change ~ treatment, data = compare_data)
+```
+
+**Always report effect size with p-value!**
+
+## Testing: Linear Regression
+
+```{r}
+#| echo: true
+# Question: What predicts BP reduction?
+
+model <- lm(bp_change ~ age + sex + treatment + baseline_bp, 
+            data = clean_data)
+
+summary(model)
+```
+
+## Testing: Check Regression Assumptions
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 6
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+**Red flags:** Patterns in residuals, outliers with high leverage
+
+## Testing: Regression Interpretation
+
+```{r}
+#| echo: true
+# Extract coefficients with confidence intervals
+confint(model)
+
+# More readable output
+library(broom)
+tidy(model, conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high, p.value) %>%
+  mutate(across(where(is.numeric), round, 3))
+```
+
+**Interpretation:** After controlling for other factors, each 1 mmHg higher baseline BP is associated with X mmHg greater reduction.
+
+# Step 5: Visualization
+
+## Plots: Principles
+
+**Good statistical plots:**
+
+1. Show the data (not just summaries)
+2. Include error bars/confidence intervals
+3. Label everything clearly
+4. Choose appropriate scale
+5. Don't mislead with truncated axes
+
+## Plots: Before-After Comparison
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 5
+library(tidyr)
+
+plot_data <- clean_data %>%
+  select(id, treatment, baseline_bp, followup_bp) %>%
+  pivot_longer(cols = c(baseline_bp, followup_bp),
+               names_to = "timepoint",
+               values_to = "bp")
+
+ggplot(plot_data, aes(x = timepoint, y = bp, group = id)) +
+  geom_line(alpha = 0.2) +
+  geom_point(alpha = 0.3) +
+  stat_summary(aes(group = 1), fun = mean, geom = "line", 
+               color = "red", size = 1.5) +
+  facet_wrap(~treatment) +
+  labs(title = "Blood Pressure Change by Treatment",
+       y = "Systolic BP (mmHg)") +
+  theme_minimal()
+```
+
+## Plots: Effect Sizes with CI
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 5
+# Calculate mean change and CI by group
+summary_data <- clean_data %>%
+  group_by(treatment) %>%
+  summarise(
+    mean_change = mean(bp_change, na.rm = TRUE),
+    se = sd(bp_change, na.rm = TRUE) / sqrt(n()),
+    ci_lower = mean_change - 1.96 * se,
+    ci_upper = mean_change + 1.96 * se
+  )
+
+ggplot(summary_data, aes(x = treatment, y = mean_change)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), width = 0.2) +
+  labs(title = "Mean BP Reduction by Treatment (with 95% CI)",
+       y = "BP Change (mmHg)") +
+  theme_minimal()
+```
+
+# Common Errors to Avoid
+
+## Top 10 Statistical Mistakes
+
+1. **P-hacking:** Testing multiple hypotheses, only reporting significant ones
+2. **Cherry-picking:** Removing "inconvenient" data without justification
+3. **Wrong test:** Not checking assumptions
+4. **Ignoring multiple comparisons:** Need correction for many tests
+5. **Confusing significance with importance:** p<0.05 ≠ clinical relevance
+
+## Top 10 Statistical Mistakes (cont.)
+
+6. **Assuming causation from correlation:** Association ≠ causation
+7. **Inadequate sample size:** Underpowered studies miss true effects
+8. **Not reporting effect sizes:** P-value alone is insufficient
+9. **Ignoring missing data:** Can bias results
+10. **Not documenting analysis:** Can't reproduce = not science
+
+## The Reproducibility Checklist
+
+**Before you publish/present:**
+
+- [ ] Raw data preserved
+- [ ] Analysis code documented
+- [ ] Random seeds set (for reproducibility)
+- [ ] All exclusions justified
+- [ ] Assumptions checked
+- [ ] Effect sizes reported
+- [ ] Confidence intervals included
+- [ ] Multiple testing addressed
+- [ ] Limitations acknowledged
+
+# Practical Example: Full Analysis
+
+## Complete Workflow Example
+
+```{r}
+#| echo: true
+#| eval: false
+# 1. IMPORT
+library(readr)
+data_raw <- read_csv("study_data.csv")
+
+# 2. CLEAN
+data_clean <- data_raw %>%
+  filter(!duplicated(id)) %>%
+  filter(complete.cases(.)) %>%
+  mutate(treatment = factor(treatment))
+
+# 3. EXPLORE
+summary(data_clean)
+ggplot(data_clean, aes(x = outcome)) + geom_histogram()
+
+# 4. TEST
+model <- lm(outcome ~ treatment + age + sex, data = data_clean)
+summary(model)
+
+# 5. VISUALIZE
+ggplot(data_clean, aes(x = treatment, y = outcome)) +
+  geom_boxplot() + theme_minimal()
+```
+
+## Your Analysis Template
+
+```{r}
+#| echo: true
+#| eval: false
+# Copy this structure for your assignments!
+
+# Load packages
+library(tidyverse)
+library(broom)
+
+# 1. Import and inspect
+data <- read_csv("yourdata.csv")
+glimpse(data)
+
+# 2. Clean and document
+data_clean <- data %>%
+  filter(___) %>%  # Document why
+  mutate(___)      # Create needed variables
+
+# 3. Explore first!
+summary(data_clean)
+# Create plots to understand distributions
+
+# 4. Test appropriately
+# Check assumptions
+# Run test
+# Check effect size
+
+# 5. Visualize results
+# Make it clear and honest
+```
+
+# Key Takeaways
+
+## Remember These Principles
+
+1. **Check your data at every step** - errors compound!
+2. **Visualize before testing** - understand before concluding
+3. **Choose tests based on assumptions** - not wishful thinking
+4. **Report effect sizes and confidence intervals** - not just p-values
+5. **Document everything** - reproducibility matters
+
+## Statistical Testing ≠ Magic
+
+**Statistics can't:**
+
+- Fix bad study design
+- Make insufficient data sufficient  
+- Prove causation from correlation
+- Replace domain expertise
+
+**Statistics can:**
+
+- Quantify uncertainty
+- Test hypotheses rigorously
+- Identify patterns in data
+- Support evidence-based decisions
+
+## Resources for Learning More
+
+**Books:**
+- "The Art of Statistics" - David Spiegelhalter
+- "Statistical Rethinking" - Richard McElreath
+
+**Online:**
+- R for Data Science (r4ds.had.co.nz)
+- Cross Validated (stats.stackexchange.com)
+
+**Practice:**
+- Work through examples
+- Check your assumptions
+- Compare with classmates
+- Ask questions!
+
+## Questions?
+
+**Key message:** Good statistical analysis requires:
+
+- **Skepticism** - question every step
+- **Transparency** - document everything
+- **Humility** - acknowledge limitations
+- **Rigor** - follow best practices
+
+**Your health research conclusions affect real people - do it right!**
