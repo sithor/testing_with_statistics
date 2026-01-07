@@ -6,6 +6,9 @@ date: "January 6, 2026"
 format:
   pptx:
     slide-level: 2
+knitr:
+  opts_chunk:
+    dev: "png"
 editor: visual
 ---
 
