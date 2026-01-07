@@ -15,7 +15,7 @@ packages <- c(
   "naniar",       # Missing data visualization
   "patchwork",    # Combining plots
   "effsize",      # Effect size calculations
-  "DiagrammeR"    # Flow diagrams
+  "DiagrammeR",    # Flow diagrams
   "webshot2"
 )
 
