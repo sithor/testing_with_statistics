@@ -16,6 +16,7 @@ packages <- c(
   "patchwork",    # Combining plots
   "effsize",      # Effect size calculations
   "DiagrammeR"    # Flow diagrams
+  "webshot2
 )
 
 # Function to check and install packages
